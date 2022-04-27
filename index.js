@@ -4,9 +4,9 @@ const EventEmitter = require('events');
 const path = require('path');
 
 const {
-    Worker, isMainThread, parentPort, workerData
-  } = require('worker_threads');
-  
+    Worker, isMainThread, parentPort, workerData, threadId
+} = require('worker_threads');
+
 const url = process.argv[process.argv.findIndex(value => value.includes("https://"))];
 
 axios.get(url, {
@@ -15,7 +15,8 @@ axios.get(url, {
     }
 }).then(response => {
     if (response.status === 200) {
-        const pool = new WorkerPool(2, url);
+        const pool = new WorkerPool(100, url);
+        pool.setMaxListeners(0);
         console.log('Pool created..')
         pool.runTask(url, (e) => console.log(e))
     }
@@ -41,6 +42,7 @@ class WorkerPool extends EventEmitter {
         this.baseUrl = baseUrl;
         this.workers = [];
         this.freeWorkers = [];
+        this.scanned = new Set();
 
         for (let i = 0; i < numberOfThreads; i++) {
             this.addNewWorker();
@@ -49,16 +51,21 @@ class WorkerPool extends EventEmitter {
 
     addNewWorker() {
         const worker = new Worker(path.resolve(__dirname, 'worker.js'));
+        worker.setMaxListeners(0);
 
         worker.on('message', (result) => {
-            this.close();
-            // console.log(worker.threadId, "result::", result);
+            // this.close();
+            console.log("kFreedEvent");
+
             this.freeWorkers.push(worker);
             this.emit(kWorkerFreedEvent);
-            console.log(this.freeWorkers);
+            if (result.size !== 0) result.forEach((link) => { this.runTask(link, e => console.log(e)) });
         });
         worker.on('error', (err) => {
             console.log(err);
+            console.log("freeWorker");
+            this.freeWorkers.push(worker);
+            this.emit(kWorkerFreedEvent);
         })
 
         this.workers.push(worker);
@@ -67,18 +74,25 @@ class WorkerPool extends EventEmitter {
     }
 
     runTask(task, callback) {
-        if (this.freeWorkers.length === (this.numberOfThreads - 1)){
-            console.log('worker pool empty');
-            this.once(kWorkerFreedEvent, () => this.runTask(task, callback));
+        if (this.scanned.has(task)) {
             return;
         }
-        console.log('acquiring worker pool');
+        this.scanned.add(task);
+        if (this.freeWorkers.length === 0) {
+            this.once(kWorkerFreedEvent, () => {
+                this.runTask(task, callback)
+            });
+            return;
+        }
+        console.log('acquiring worker');
         const worker = this.freeWorkers.pop();
 
         worker[kTaskInfo] = new WorkPoolCrawlInfo(callback);
-        worker.onmessage = function(e) {
+
+        worker.onmessage = function (e) {
             console.log('Message received from worker: , ', e.data)
         }
+
         worker.postMessage(task);
         console.log('Message posted to worker');
     }
