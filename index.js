@@ -61,7 +61,9 @@ class WorkerPool extends EventEmitter {
             this.runTask(link, (e) => console.log(e));
         });
       }
+      if (this.freeWorkers.length === this.workers.length) process.exit(0);
     });
+
     worker.on("error", (err) => {
       this.freeWorkers.push(worker);
       this.emit(kWorkerFreedEvent);
@@ -92,7 +94,11 @@ class WorkerPool extends EventEmitter {
 
     worker[kTaskInfo] = new WorkPoolCrawlInfo(callback);
 
-    worker.postMessage({ task: task, scanned: this.scanned, baseUrl: url.href });
+    worker.postMessage({
+      task: task,
+      scanned: this.scanned,
+      baseUrl: url.href,
+    });
   }
 
   close() {

@@ -35,12 +35,7 @@ parentPort.on("message", async (data) => {
       }
     })
     .catch((e) => {
-      console.log("Worker error:", e);
+      console.log("Worker error");
       parentPort.postMessage(new Set());
     });
 });
-// parentPort.on('message', (task) => {
-//     console.log(`running task on thread: ${threadId} with link: ${task}`);
-
-//     parentPort.postMessage(task);
-// })
